@@ -42,7 +42,6 @@ HTML_TEMPLATE = '''
             max-width: 600px;
             width: 100%;
             box-shadow: 0 30px 80px rgba(0, 0, 0, 0.6);
-            transition: 0.3s;
         }
         .header { text-align: center; margin-bottom: 25px; }
         .header .icon { font-size: 48px; display: block; }
@@ -54,7 +53,7 @@ HTML_TEMPLATE = '''
             -webkit-text-fill-color: transparent;
             background-clip: text;
         }
-        .header p { color: #666; font-size: 14px; font-weight: 400; margin-top: 4px; }
+        .header p { color: #666; font-size: 14px; margin-top: 4px; }
         .header p span {
             background: #ffeeee;
             padding: 2px 12px;
@@ -205,20 +204,6 @@ HTML_TEMPLATE = '''
             border-radius: 4px;
             transition: width 0.5s;
         }
-        .btn-group { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; margin-top: 10px; }
-        .btn-group button {
-            padding: 10px 24px;
-            border: none;
-            border-radius: 10px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: 0.3s;
-            font-family: inherit;
-        }
-        .btn-copy { background: #6c757d; color: white; }
-        .btn-copy:hover { background: #5a6268; }
-        .btn-newtab { background: #007bff; color: white; }
-        .btn-newtab:hover { background: #0069d9; }
         @media (max-width: 480px) {
             .container { padding: 20px 15px; }
             .input-group { flex-direction: column; }
@@ -322,28 +307,6 @@ HTML_TEMPLATE = '''
                 /youtube\\.com\\/embed\\/([a-zA-Z0-9_-]{11})/
             ];
             return patterns.some(p => p.test(url));
-        }
-
-        function copyToClipboard(text) {
-            if (navigator.clipboard) {
-                navigator.clipboard.writeText(text).then(() => {
-                    setStatus('✅ Link copied to clipboard!', 'success');
-                    setTimeout(hideStatus, 2000);
-                }).catch(() => fallbackCopy(text));
-            } else {
-                fallbackCopy(text);
-            }
-        }
-
-        function fallbackCopy(text) {
-            const textarea = document.createElement('textarea');
-            textarea.value = text;
-            document.body.appendChild(textarea);
-            textarea.select();
-            document.execCommand('copy');
-            document.body.removeChild(textarea);
-            setStatus('✅ Link copied to clipboard!', 'success');
-            setTimeout(hideStatus, 2000);
         }
 
         async function downloadVideo() {
@@ -538,4 +501,102 @@ def download():
         
         # yt-dlp options
         if quality == 'audio':
-    
+            ydl_opts = {
+                'format': 'bestaudio/best',
+                'outtmpl': os.path.join(output_path, '%(title)s.%(ext)s'),
+                'postprocessors': [{
+                    'key': 'FFmpegExtractAudio',
+                    'preferredcodec': 'mp3',
+                    'preferredquality': '192',
+                }],
+                'quiet': True,
+                'no_warnings': True,
+                'no_check_certificate': True,
+            }
+        else:
+            ydl_opts = {
+                'format': format_spec,
+                'outtmpl': os.path.join(output_path, '%(title)s.%(ext)s'),
+                'merge_output_format': 'mp4',
+                'quiet': True,
+                'no_warnings': True,
+                'no_check_certificate': True,
+                'extract_flat': False,
+                'ignoreerrors': True,
+            }
+        
+        # Download
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=True)
+            title = info.get('title', 'video').replace('/', '_').replace('\\', '_')
+            
+            # Find downloaded file
+            files = os.listdir(output_path)
+            if not files:
+                return jsonify({'error': 'File download nahi hui'}), 500
+            
+            filename = files[0]
+            file_path = os.path.join(output_path, filename)
+            
+            # Determine mimetype
+            mimetype = 'audio/mpeg' if quality == 'audio' else 'video/mp4'
+            ext = 'mp3' if quality == 'audio' else 'mp4'
+            
+            # Send file
+            return send_file(
+                file_path,
+                as_attachment=True,
+                download_name=f"{title}.{ext}",
+                mimetype=mimetype
+            )
+            
+    except Exception as e:
+        error_msg = str(e)
+        if 'HTTP Error 403' in error_msg:
+            error_msg = 'YouTube ne block kar diya! Thodi der baad try karein.'
+        elif 'not found' in error_msg.lower():
+            error_msg = 'Video nahi mili! URL check karein.'
+        return jsonify({'error': error_msg}), 500
+
+@app.route('/info', methods=['POST'])
+def get_info():
+    try:
+        url = request.form.get('url')
+        if not url:
+            return jsonify({'error': 'URL nahi daala!'}), 400
+        
+        ydl_opts = {
+            'quiet': True,
+            'no_warnings': True,
+            'extract_flat': True,
+            'no_check_certificate': True,
+        }
+        
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=False)
+            
+            return jsonify({
+                'title': info.get('title', 'Unknown'),
+                'duration': info.get('duration', 0),
+                'thumbnail': info.get('thumbnail', ''),
+                'views': info.get('view_count', 0),
+                'uploader': info.get('uploader', 'Unknown')
+            })
+            
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/cleanup', methods=['POST'])
+def cleanup():
+    try:
+        for item in os.listdir(DOWNLOAD_FOLDER):
+            item_path = os.path.join(DOWNLOAD_FOLDER, item)
+            if os.path.isdir(item_path):
+                shutil.rmtree(item_path)
+        return jsonify({'message': 'Cleanup done'})
+    except:
+        return jsonify({'error': 'Cleanup failed'}), 500
+
+if __name__ == '__main__':
+    port = int(os.environ.get('PORT', 5000))
+    app.run(host='0.0.0.0', port=port, debug=False)
