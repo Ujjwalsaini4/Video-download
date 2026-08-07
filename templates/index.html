@@ -1,47 +1,80 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>YouTube Downloader</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>YouTube Video Downloader</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎥</text></svg>">
 </head>
 <body>
-
     <div class="container">
-        <div class="glass-card">
-            <h1 class="title">🎥 YouTube Downloader</h1>
-            <p class="subtitle">Paste URL and get video or audio</p>
-
-            <div class="input-group">
-                <input type="text" id="urlInput" placeholder="Paste YouTube URL here..." />
-                <button id="fetchBtn" onclick="fetchInfo()">📥 Get Info</button>
+        <div class="card">
+            <div class="header">
+                <div class="logo">🎥</div>
+                <h1>YouTube Downloader</h1>
+                <p>Download any video or audio in high quality</p>
             </div>
 
-            <div id="loader" style="display: none;">Loading...</div>
+            <div class="input-section">
+                <div class="url-input-group">
+                    <input 
+                        type="text" 
+                        id="urlInput" 
+                        placeholder="Paste YouTube URL here..." 
+                        autocomplete="off"
+                    >
+                    <button id="fetchBtn" onclick="fetchInfo()">
+                        <span>🔍</span> Get Info
+                    </button>
+                </div>
+                <div id="urlError" class="error-message"></div>
+            </div>
 
-            <div id="videoInfo" style="display: none;">
+            <div id="loader" class="loader" style="display: none;">
+                <div class="spinner"></div>
+                <p>Fetching video information...</p>
+            </div>
+
+            <div id="videoInfo" class="video-info" style="display: none;">
                 <div class="video-preview">
-                    <img id="thumbnail" src="" alt="Thumbnail" />
-                    <div>
-                        <h2 id="videoTitle">Title</h2>
-                        <p id="videoUploader">Uploader</p>
-                        <p id="videoViews">Views</p>
+                    <img id="thumbnail" src="" alt="Thumbnail">
+                    <div class="video-details">
+                        <h2 id="videoTitle">Video Title</h2>
+                        <p class="uploader" id="videoUploader">👤 Uploader</p>
+                        <p class="views" id="videoViews">👁️ Views</p>
+                        <p class="duration" id="videoDuration">⏱️ Duration</p>
                     </div>
                 </div>
 
-                <div class="format-section">
-                    <h3>Choose Format</h3>
-                    <select id="formatSelect"></select>
-                    <button onclick="downloadVideo()" class="download-btn">⬇️ Download Video</button>
-                    <button onclick="downloadAudio()" class="download-btn audio-btn">🎵 Download Audio (MP3)</button>
+                <div class="download-section">
+                    <div class="format-selector">
+                        <label for="formatSelect">Select Quality:</label>
+                        <select id="formatSelect">
+                            <option value="best">Best Quality (Auto)</option>
+                        </select>
+                    </div>
+                    
+                    <div class="download-buttons">
+                        <button onclick="downloadVideo()" class="btn btn-video">
+                            <span>⬇️</span> Download Video
+                        </button>
+                        <button onclick="downloadAudio()" class="btn btn-audio">
+                            <span>🎵</span> Download Audio (MP3)
+                        </button>
+                    </div>
+                </div>
+
+                <div id="progressBar" class="progress-bar" style="display: none;">
+                    <div class="progress-fill" id="progressFill"></div>
+                    <p id="progressText">Preparing download...</p>
                 </div>
             </div>
 
-            <div id="errorMsg" style="color: #ff6b6b; margin-top: 16px;"></div>
-
-            <div id="progressBar" style="display: none; margin-top: 20px;">
-                <div id="progressFill" style="height: 6px; background: linear-gradient(90deg, #ff6b6b, #ffd93d); width: 0%; border-radius: 8px; transition: width 0.3s;"></div>
+            <div id="errorMsg" class="error-message" style="display: none;"></div>
+            
+            <div class="footer">
+                <p>⚠️ Download only content you have rights to</p>
             </div>
         </div>
     </div>
