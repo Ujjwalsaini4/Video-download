@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>YouTube Downloader</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
+</head>
+<body>
+
+    <div class="container">
+        <div class="glass-card">
+            <h1 class="title">🎥 YouTube Downloader</h1>
+            <p class="subtitle">Paste URL and get video or audio</p>
+
+            <div class="input-group">
+                <input type="text" id="urlInput" placeholder="Paste YouTube URL here..." />
+                <button id="fetchBtn" onclick="fetchInfo()">📥 Get Info</button>
+            </div>
+
+            <div id="loader" style="display: none;">Loading...</div>
+
+            <div id="videoInfo" style="display: none;">
+                <div class="video-preview">
+                    <img id="thumbnail" src="" alt="Thumbnail" />
+                    <div>
+                        <h2 id="videoTitle">Title</h2>
+                        <p id="videoUploader">Uploader</p>
+                        <p id="videoViews">Views</p>
+                    </div>
+                </div>
+
+                <div class="format-section">
+                    <h3>Choose Format</h3>
+                    <select id="formatSelect"></select>
+                    <button onclick="downloadVideo()" class="download-btn">⬇️ Download Video</button>
+                    <button onclick="downloadAudio()" class="download-btn audio-btn">🎵 Download Audio (MP3)</button>
+                </div>
+            </div>
+
+            <div id="errorMsg" style="color: #ff6b6b; margin-top: 16px;"></div>
+
+            <div id="progressBar" style="display: none; margin-top: 20px;">
+                <div id="progressFill" style="height: 6px; background: linear-gradient(90deg, #ff6b6b, #ffd93d); width: 0%; border-radius: 8px; transition: width 0.3s;"></div>
+            </div>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
+</body>
+</html>
