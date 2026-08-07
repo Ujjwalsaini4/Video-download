@@ -1,23 +1,9 @@
-from flask import Flask, request, render_template_string, send_file, jsonify
-import yt_dlp
-import os
-import uuid
+from flask import Flask, request, render_template_string, jsonify
+import requests
 import re
-import logging
-from datetime import datetime
-
-# ================================================================
-# LOGGING SETUP - To see exact errors
-# ================================================================
-logging.basicConfig(level=logging.DEBUG)
-logger = logging.getLogger(__name__)
+import os
 
 app = Flask(__name__)
-
-# Downloads folder
-DOWNLOAD_FOLDER = 'downloads'
-if not os.path.exists(DOWNLOAD_FOLDER):
-    os.makedirs(DOWNLOAD_FOLDER)
 
 # ================================================================
 # HTML TEMPLATE (Frontend)
@@ -412,12 +398,6 @@ HTML_TEMPLATE = '''
 # ================================================================
 # FIX: Regular expression with raw string
 # ================================================================
-URL_REGEX = re.compile(r'(?:youtube\.com/watch\?v=|youtu\.be/|youtube\.com/shorts/|youtube\.com/embed/)([a-zA-Z0-9_-]{11})')
-
-# ================================================================
-# FLASK ROUTES - yt-dlp + Cookies
-# ================================================================
-
 @app.route('/')
 def home():
     return render_template_string(HTML_TEMPLATE)
@@ -428,130 +408,37 @@ def download():
         url = request.form.get('url')
         quality = request.form.get('quality', '720')
         
-        logger.info(f"Download request received: URL={url}, Quality={quality}")
+        # Extract video ID
+        video_id = re.search(r'(?:v=|youtu\.be/|shorts/|embed/)([a-zA-Z0-9_-]{11})', url)
+        if not video_id:
+            return jsonify({'error': 'Invalid URL'}), 400
         
-        if not url:
-            return jsonify({'error': 'URL nahi daala!'}), 400
+        video_id = video_id.group(1)
         
-        # Validate URL
-        match = URL_REGEX.search(url)
-        if not match:
-            logger.error(f"Invalid URL: {url}")
-            return jsonify({'error': 'Invalid YouTube URL!'}), 400
+        # Multiple free APIs
+        apis = [
+            f"https://api.vevioz.com/api/button/mp3/{video_id}",
+            f"https://yt-api.com/api/button/mp3/{video_id}",
+        ]
         
-        video_id = match.group(1)
-        logger.info(f"Video ID extracted: {video_id}")
+        for api_url in apis:
+            try:
+                response = requests.get(api_url, timeout=30)
+                if response.status_code == 200:
+                    data = response.json()
+                    if data.get('url'):
+                        return jsonify({
+                            'success': True,
+                            'download_url': data['url'],
+                            'title': data.get('title', 'Video')
+                        })
+            except:
+                continue
         
-        # ============================================================
-        #  COOKIE FILE PATH - Render Secret File
-        # ============================================================
-        cookie_file_path = os.environ.get('YOUTUBE_COOKIE_FILE_PATH', '/etc/secrets/cookies.txt')
-        logger.info(f"Looking for cookie file at: {cookie_file_path}")
+        return jsonify({'error': 'All APIs failed. Use ssyoutube.com'}), 500
         
-        # Check if cookie file exists
-        if not os.path.exists(cookie_file_path):
-            logger.error(f"Cookie file not found at: {cookie_file_path}")
-            return jsonify({'error': f'Cookie file not found at {cookie_file_path}! Please upload cookies.txt as Secret File on Render.'}), 500
-        
-        logger.info(f"Cookie file found at: {cookie_file_path}")
-        
-        # Unique ID for each download
-        download_id = str(uuid.uuid4())[:8]
-        output_path = os.path.join(DOWNLOAD_FOLDER, download_id)
-        os.makedirs(output_path, exist_ok=True)
-        logger.info(f"Output path created: {output_path}")
-        
-        # Quality mapping
-        quality_map = {
-            '1080': 'bestvideo[height<=1080]+bestaudio/best[height<=1080]',
-            '720': 'bestvideo[height<=720]+bestaudio/best[height<=720]',
-            '480': 'bestvideo[height<=480]+bestaudio/best[height<=480]',
-            '360': 'bestvideo[height<=360]+bestaudio/best[height<=360]',
-            'audio': 'bestaudio/best'
-        }
-        
-        format_spec = quality_map.get(quality, 'bestvideo[height<=720]+bestaudio/best[height<=720]')
-        logger.info(f"Format spec: {format_spec}")
-        
-        # ============================================================
-        #  yt-dlp OPTIONS with COOKIES + ANTI-BOT SETTINGS
-        # ============================================================
-        if quality == 'audio':
-            ydl_opts = {
-                'format': 'bestaudio/best',
-                'outtmpl': os.path.join(output_path, '%(title)s.%(ext)s'),
-                'postprocessors': [{
-                    'key': 'FFmpegExtractAudio',
-                    'preferredcodec': 'mp3',
-                    'preferredquality': '192',
-                }],
-                'cookiefile': cookie_file_path,
-                'quiet': False,  # Set to False for debugging
-                'no_warnings': False,
-                'no_check_certificate': True,
-                'extractor_args': {
-                    'youtube': {
-                        'player_client': ['android'],
-                        'player_skip': ['webpage'],
-                    }
-                }
-            }
-        else:
-            ydl_opts = {
-                'format': format_spec,
-                'outtmpl': os.path.join(output_path, '%(title)s.%(ext)s'),
-                'merge_output_format': 'mp4',
-                'cookiefile': cookie_file_path,
-                'quiet': False,  # Set to False for debugging
-                'no_warnings': False,
-                'no_check_certificate': True,
-                'extract_flat': False,
-                'ignoreerrors': True,
-                'extractor_args': {
-                    'youtube': {
-                        'player_client': ['android'],
-                        'player_skip': ['webpage'],
-                    }
-                }
-            }
-        
-        # Download with yt-dlp
-        logger.info("Starting yt-dlp download...")
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=True)
-            title = info.get('title', 'video').replace('/', '_').replace('\\', '_')
-            logger.info(f"Downloaded video: {title}")
-            
-            # Find downloaded file
-            files = os.listdir(output_path)
-            if not files:
-                logger.error("No files found in output directory")
-                return jsonify({'error': 'File download nahi hui'}), 500
-            
-            filename = files[0]
-            file_path = os.path.join(output_path, filename)
-            logger.info(f"Sending file: {file_path}")
-            
-            # Determine mimetype
-            mimetype = 'audio/mpeg' if quality == 'audio' else 'video/mp4'
-            ext = 'mp3' if quality == 'audio' else 'mp4'
-            
-            # Send file
-            return send_file(
-                file_path,
-                as_attachment=True,
-                download_name=f"{title}.{ext}",
-                mimetype=mimetype
-            )
-            
     except Exception as e:
-        logger.error(f"Download error: {str(e)}", exc_info=True)
-        error_msg = str(e)
-        if 'Sign in to confirm' in error_msg or 'bot' in error_msg.lower():
-            error_msg = 'YouTube bot detection! Cookies might be expired. Please refresh cookies.txt and redeploy.'
-        elif 'HTTP Error 403' in error_msg:
-            error_msg = 'YouTube ne block kar diya! Cookies refresh karein.'
-        return jsonify({'error': error_msg}), 500
+        return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 10000))
