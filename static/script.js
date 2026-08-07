@@ -1,25 +1,71 @@
+let currentVideoInfo = null;
+
+function showError(message) {
+    const errorDiv = document.getElementById('errorMsg');
+    errorDiv.textContent = message;
+    errorDiv.style.display = 'block';
+    setTimeout(() => {
+        errorDiv.style.display = 'none';
+    }, 8000);
+}
+
+function hideError() {
+    document.getElementById('errorMsg').style.display = 'none';
+}
+
+function showLoader(show) {
+    document.getElementById('loader').style.display = show ? 'block' : 'none';
+}
+
+function showVideoInfo(show) {
+    document.getElementById('videoInfo').style.display = show ? 'block' : 'none';
+}
+
+function formatNumber(num) {
+    if (!num) return '0';
+    if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M';
+    if (num >= 1000) return (num / 1000).toFixed(1) + 'K';
+    return num.toString();
+}
+
+function formatDuration(seconds) {
+    if (!seconds) return '0:00';
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    const secs = seconds % 60;
+    
+    if (hours > 0) {
+        return `${hours}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+    }
+    return `${minutes}:${secs.toString().padStart(2, '0')}`;
+}
+
+function formatFileSize(bytes) {
+    if (!bytes) return 'Unknown';
+    const sizes = ['B', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(1024));
+    return (bytes / Math.pow(1024, i)).toFixed(1) + ' ' + sizes[i];
+}
+
 function fetchInfo() {
     const url = document.getElementById('urlInput').value.trim();
-    const errorDiv = document.getElementById('errorMsg');
-    const loader = document.getElementById('loader');
-    const infoDiv = document.getElementById('videoInfo');
-
-    errorDiv.textContent = '';
-    infoDiv.style.display = 'none';
+    hideError();
+    showVideoInfo(false);
 
     if (!url) {
-        errorDiv.textContent = '❌ Please enter a YouTube URL';
+        showError('❌ Please enter a YouTube URL');
         return;
     }
 
     // Validate YouTube URL
     const youtubeRegex = /(youtube\.com|youtu\.be)/;
     if (!youtubeRegex.test(url)) {
-        errorDiv.textContent = '❌ Please enter a valid YouTube URL';
+        showError('❌ Please enter a valid YouTube URL');
         return;
     }
 
-    loader.style.display = 'block';
+    showLoader(true);
+    document.getElementById('fetchBtn').disabled = true;
 
     fetch('/get_info', {
         method: 'POST',
@@ -28,160 +74,119 @@ function fetchInfo() {
     })
     .then(res => res.json())
     .then(data => {
-        loader.style.display = 'none';
+        showLoader(false);
+        document.getElementById('fetchBtn').disabled = false;
 
         if (data.error) {
-            errorDiv.textContent = '❌ ' + data.error;
+            showError('❌ ' + data.error);
             return;
         }
 
+        currentVideoInfo = data;
+
         // Display video info
         document.getElementById('thumbnail').src = data.thumbnail || '';
+        document.getElementById('thumbnail').alt = data.title || 'Video thumbnail';
         document.getElementById('videoTitle').textContent = data.title || 'Untitled';
         document.getElementById('videoUploader').textContent = '👤 ' + (data.uploader || 'Unknown');
-        document.getElementById('videoViews').textContent = '👁️ ' + formatNumber(data.views || 0) + ' views';
+        document.getElementById('videoViews').textContent = '👁️ ' + formatNumber(data.views) + ' views';
+        document.getElementById('videoDuration').textContent = '⏱️ ' + formatDuration(data.duration);
 
         // Populate formats
         const select = document.getElementById('formatSelect');
         select.innerHTML = '';
-        const formats = data.formats || [];
+        
+        // Add best quality option
+        const bestOpt = document.createElement('option');
+        bestOpt.value = 'best';
+        bestOpt.textContent = '⭐ Best Quality (Auto)';
+        select.appendChild(bestOpt);
 
-        if (formats.length === 0) {
-            const opt = document.createElement('option');
-            opt.value = 'best';
-            opt.textContent = 'Best Quality';
-            select.appendChild(opt);
-        } else {
-            formats.forEach(f => {
+        // Add format options
+        const formats = data.formats || [];
+        let hasFormats = false;
+        
+        formats.forEach(f => {
+            if (f.resolution === 'audio only') {
                 const opt = document.createElement('option');
                 opt.value = f.format_id;
                 const size = f.filesize ? ' (' + formatFileSize(f.filesize) + ')' : '';
-                const res = f.resolution || 'audio';
-                opt.textContent = res + ' - ' + f.ext + size;
+                opt.textContent = '🎵 Audio - ' + f.ext + size;
                 select.appendChild(opt);
-            });
+                hasFormats = true;
+            } else {
+                const opt = document.createElement('option');
+                opt.value = f.format_id;
+                const size = f.filesize ? ' (' + formatFileSize(f.filesize) + ')' : '';
+                const note = f.note ? ' ' + f.note : '';
+                opt.textContent = f.resolution + ' - ' + f.ext + size + note;
+                select.appendChild(opt);
+                hasFormats = true;
+            }
+        });
+
+        if (!hasFormats) {
+            const opt = document.createElement('option');
+            opt.value = 'best';
+            opt.textContent = 'Default Quality';
+            select.appendChild(opt);
         }
 
-        infoDiv.style.display = 'block';
-        infoDiv.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        showVideoInfo(true);
+        document.getElementById('videoInfo').scrollIntoView({ behavior: 'smooth', block: 'start' });
     })
     .catch(err => {
-        loader.style.display = 'none';
-        errorDiv.textContent = '❌ Network error: ' + err.message;
-        console.error(err);
+        showLoader(false);
+        document.getElementById('fetchBtn').disabled = false;
+        showError('❌ Network error: ' + err.message);
+        console.error('Fetch error:', err);
     });
+}
+
+function showProgress(message) {
+    const progressBar = document.getElementById('progressBar');
+    const progressFill = document.getElementById('progressFill');
+    const progressText = document.getElementById('progressText');
+    
+    progressBar.style.display = 'block';
+    progressText.textContent = message || 'Preparing download...';
+    progressFill.style.width = '0%';
+}
+
+function updateProgress(percent, message) {
+    const progressFill = document.getElementById('progressFill');
+    const progressText = document.getElementById('progressText');
+    
+    progressFill.style.width = Math.min(percent, 100) + '%';
+    if (message) {
+        progressText.textContent = message;
+    }
+}
+
+function hideProgress() {
+    const progressBar = document.getElementById('progressBar');
+    setTimeout(() => {
+        progressBar.style.display = 'none';
+        document.getElementById('progressFill').style.width = '0%';
+    }, 1000);
 }
 
 function downloadVideo() {
     const url = document.getElementById('urlInput').value.trim();
     const formatId = document.getElementById('formatSelect').value;
-    const progressBar = document.getElementById('progressBar');
-    const progressFill = document.getElementById('progressFill');
 
     if (!url) {
-        document.getElementById('errorMsg').textContent = '❌ Please enter a URL first';
+        showError('❌ Please enter a URL first');
         return;
     }
 
-    // Show progress (simulated)
-    progressBar.style.display = 'block';
-    let progress = 0;
-    const interval = setInterval(() => {
-        progress += Math.random() * 10;
-        if (progress > 100) progress = 100;
-        progressFill.style.width = progress + '%';
-        if (progress >= 100) {
-            clearInterval(interval);
-            setTimeout(() => {
-                progressBar.style.display = 'none';
-                progressFill.style.width = '0%';
-            }, 1000);
-        }
-    }, 300);
+    showProgress('Starting video download...');
+    updateProgress(10, 'Preparing video...');
 
-    // Create form and submit
+    // Create and submit form
     const form = document.createElement('form');
     form.method = 'POST';
     form.action = '/download';
 
     const urlInput = document.createElement('input');
     urlInput.type = 'hidden';
-    urlInput.name = 'url';
-    urlInput.value = url;
-    form.appendChild(urlInput);
-
-    const formatInput = document.createElement('input');
-    formatInput.type = 'hidden';
-    formatInput.name = 'format_id';
-    formatInput.value = formatId || 'best';
-    form.appendChild(formatInput);
-
-    const audioInput = document.createElement('input');
-    audioInput.type = 'hidden';
-    audioInput.name = 'audio';
-    audioInput.value = 'false';
-    form.appendChild(audioInput);
-
-    document.body.appendChild(form);
-    form.submit();
-    document.body.removeChild(form);
-}
-
-function downloadAudio() {
-    const url = document.getElementById('urlInput').value.trim();
-    const progressBar = document.getElementById('progressBar');
-    const progressFill = document.getElementById('progressFill');
-
-    if (!url) {
-        document.getElementById('errorMsg').textContent = '❌ Please enter a URL first';
-        return;
-    }
-
-    // Show progress (simulated)
-    progressBar.style.display = 'block';
-    let progress = 0;
-    const interval = setInterval(() => {
-        progress += Math.random() * 10;
-        if (progress > 100) progress = 100;
-        progressFill.style.width = progress + '%';
-        if (progress >= 100) {
-            clearInterval(interval);
-            setTimeout(() => {
-                progressBar.style.display = 'none';
-                progressFill.style.width = '0%';
-            }, 1000);
-        }
-    }, 300);
-
-    const form = document.createElement('form');
-    form.method = 'POST';
-    form.action = '/download_audio';
-
-    const urlInput = document.createElement('input');
-    urlInput.type = 'hidden';
-    urlInput.name = 'url';
-    urlInput.value = url;
-    form.appendChild(urlInput);
-
-    document.body.appendChild(form);
-    form.submit();
-    document.body.removeChild(form);
-}
-
-function formatNumber(num) {
-    if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M';
-    if (num >= 1000) return (num / 1000).toFixed(1) + 'K';
-    return num.toString();
-}
-
-function formatFileSize(bytes) {
-    if (bytes === 0 || !bytes) return 'Unknown';
-    const sizes = ['B', 'KB', 'MB', 'GB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(1024));
-    return (bytes / Math.pow(1024, i)).toFixed(1) + ' ' + sizes[i];
-}
-
-// Enter key support
-document.getElementById('urlInput').addEventListener('keydown', function(e) {
-    if (e.key === 'Enter') fetchInfo();
-});
