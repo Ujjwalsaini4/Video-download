@@ -1,13 +1,19 @@
-from flask import Flask, request, render_template_string, jsonify
-import requests
-import re
+from flask import Flask, request, render_template_string, send_file, jsonify
+import yt_dlp
 import os
+import uuid
+import re
 from datetime import datetime
 
 app = Flask(__name__)
 
+# Downloads folder
+DOWNLOAD_FOLDER = 'downloads'
+if not os.path.exists(DOWNLOAD_FOLDER):
+    os.makedirs(DOWNLOAD_FOLDER)
+
 # ================================================================
-# HTML TEMPLATE (Frontend - Same beautiful UI)
+# HTML TEMPLATE (Same as before - simplified)
 # ================================================================
 HTML_TEMPLATE = '''
 <!DOCTYPE html>
@@ -197,20 +203,6 @@ HTML_TEMPLATE = '''
             border-radius: 4px;
             transition: width 0.5s;
         }
-        .btn-group { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; margin-top: 10px; }
-        .btn-group button {
-            padding: 10px 24px;
-            border: none;
-            border-radius: 10px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: 0.3s;
-            font-family: inherit;
-        }
-        .btn-copy { background: #6c757d; color: white; }
-        .btn-copy:hover { background: #5a6268; }
-        .btn-newtab { background: #007bff; color: white; }
-        .btn-newtab:hover { background: #0069d9; }
         @media (max-width: 480px) {
             .container { padding: 20px 15px; }
             .input-group { flex-direction: column; }
@@ -316,28 +308,6 @@ HTML_TEMPLATE = '''
             return patterns.some(p => p.test(url));
         }
 
-        function copyToClipboard(text) {
-            if (navigator.clipboard) {
-                navigator.clipboard.writeText(text).then(() => {
-                    setStatus('✅ Link copied to clipboard!', 'success');
-                    setTimeout(hideStatus, 2000);
-                }).catch(() => fallbackCopy(text));
-            } else {
-                fallbackCopy(text);
-            }
-        }
-
-        function fallbackCopy(text) {
-            const textarea = document.createElement('textarea');
-            textarea.value = text;
-            document.body.appendChild(textarea);
-            textarea.select();
-            document.execCommand('copy');
-            document.body.removeChild(textarea);
-            setStatus('✅ Link copied to clipboard!', 'success');
-            setTimeout(hideStatus, 2000);
-        }
-
         async function downloadVideo() {
             const url = urlInput.value.trim();
 
@@ -361,75 +331,44 @@ HTML_TEMPLATE = '''
             setProgress(20);
 
             try {
-                // Get video info
                 const formData = new FormData();
                 formData.append('url', url);
+                formData.append('quality', quality);
 
-                const infoResp = await fetch('/info', {
+                const response = await fetch('/download', {
                     method: 'POST',
                     body: formData
                 });
 
-                const infoData = await infoResp.json();
-
-                if (infoData.error) {
-                    throw new Error(infoData.error);
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.error || 'Download failed');
                 }
 
-                setProgress(40);
-
-                // Show video info
-                const thumbnail = infoData.thumbnail || `https://img.youtube.com/vi/${url.match(/(?:v=|youtu\.be\/|shorts\/|embed\/)([a-zA-Z0-9_-]{11})/)?.[1] || ''}/hqdefault.jpg`;
-
-                videoInfoDiv.innerHTML = `
-                    <img src="${thumbnail}" alt="Thumbnail" onerror="this.src='https://via.placeholder.com/480x360?text=No+Thumbnail'">
-                    <div class="title">📹 ${infoData.title || 'Video'}</div>
-                    <div class="meta">👤 ${infoData.uploader || 'Unknown'}</div>
-                    <p style="font-size:13px;color:#666;margin-bottom:12px;">⬇ Getting download link... Please wait.</p>
-                    <div style="font-size:12px;color:#999;">⏳ This may take 10-20 seconds</div>
-                `;
-                videoInfoDiv.style.display = 'block';
-
-                setProgress(60);
-
-                // Now get download link
-                const downloadFormData = new FormData();
-                downloadFormData.append('url', url);
-                downloadFormData.append('quality', quality);
-
-                setStatus('⏳ Getting download link...', 'loading');
                 setProgress(80);
 
-                const downloadResp = await fetch('/download', {
-                    method: 'POST',
-                    body: downloadFormData
-                });
-
-                const downloadData = await downloadResp.json();
-
-                if (downloadData.error) {
-                    throw new Error(downloadData.error);
+                // Get the file
+                const blob = await response.blob();
+                const contentDisposition = response.headers.get('content-disposition');
+                let filename = 'video.mp4';
+                if (contentDisposition) {
+                    const match = contentDisposition.match(/filename="(.+)"/);
+                    if (match) filename = match[1];
                 }
 
                 setProgress(100);
 
-                // Show download link
-                videoInfoDiv.innerHTML = `
-                    <img src="${thumbnail}" alt="Thumbnail" onerror="this.src='https://via.placeholder.com/480x360?text=No+Thumbnail'">
-                    <div class="title">📹 ${downloadData.title || infoData.title || 'Video'}</div>
-                    <div class="meta">✅ Ready to download!</div>
-                    <a href="${downloadData.download_url}" class="download-link" target="_blank">⬇ Download Video</a>
-                    <div class="btn-group">
-                        <button class="btn-copy" onclick="copyToClipboard('${downloadData.download_url}')">📋 Copy Link</button>
-                        <button class="btn-newtab" onclick="window.open('${downloadData.download_url}','_blank')">🔗 Open in New Tab</button>
-                    </div>
-                    <p style="font-size:11px;color:#999;margin-top:8px;">
-                        💡 Click the button or right-click → "Save link as..."
-                    </p>
-                `;
-                videoInfoDiv.style.display = 'block';
+                // Create download link
+                const downloadUrl = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = downloadUrl;
+                a.download = filename;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(downloadUrl);
 
-                setStatus('✅ Download link ready! Click the button above.', 'success');
+                setStatus('✅ Download complete! File saved successfully.', 'success');
 
                 setTimeout(() => {
                     hideProgress();
@@ -438,22 +377,6 @@ HTML_TEMPLATE = '''
             } catch (error) {
                 console.error('Error:', error);
                 setStatus(`❌ ${error.message || 'Something went wrong. Please try again.'}`, 'error');
-
-                videoInfoDiv.innerHTML = `
-                    <div style="background:#fff3cd;padding:15px;border-radius:10px;border-left:4px solid #ffc107;text-align:left;">
-                        <strong>⚠️ Download Failed</strong><br>
-                        <p style="margin:8px 0;font-size:14px;">Try these options:</p>
-                        <ul style="margin-left:20px;line-height:1.8;font-size:13px;">
-                            <li>Check internet connection</li>
-                            <li>Try a different quality (480p or 360p)</li>
-                            <li>Use <a href="https://ssyoutube.com" target="_blank">ssyoutube.com</a> as backup</li>
-                        </ul>
-                        <p style="font-size:12px;color:#666;margin-top:8px;">
-                            URL: <strong>${url}</strong>
-                        </p>
-                    </div>
-                `;
-                videoInfoDiv.style.display = 'block';
             }
 
             downloadBtn.disabled = false;
@@ -466,29 +389,17 @@ HTML_TEMPLATE = '''
             if (e.key === 'Enter') downloadVideo();
         });
 
-        urlInput.addEventListener('paste', () => {
-            setTimeout(() => {
-                const val = urlInput.value.trim();
-                if (isValidUrl(val)) {
-                    setStatus('✅ Valid YouTube URL detected! Click Download.', 'success');
-                    setTimeout(hideStatus, 2500);
-                }
-            }, 200);
-        });
-
         window.addEventListener('load', () => {
             setStatus('🌐 Ready! Paste URL and click Download.', 'info');
             setTimeout(hideStatus, 3000);
         });
-
-        console.log('🎓 Edu Downloader loaded successfully!');
     </script>
 </body>
 </html>
 '''
 
 # ================================================================
-# FLASK ROUTES - API BASED (No yt-dlp)
+# FLASK ROUTES - yt-dlp + Cookies
 # ================================================================
 
 @app.route('/')
@@ -504,103 +415,112 @@ def download():
         if not url:
             return jsonify({'error': 'URL nahi daala!'}), 400
         
-        # Extract video ID
-        video_id = re.search(r'(?:v=|youtu\.be/|shorts/|embed/)([a-zA-Z0-9_-]{11})', url)
-        if not video_id:
+        # Validate URL
+        if not re.search(r'(?:youtube\.com/watch\?v=|youtu\.be/|youtube\.com/shorts/|youtube\.com/embed/)([a-zA-Z0-9_-]{11})', url):
             return jsonify({'error': 'Invalid YouTube URL!'}), 400
         
-        video_id = video_id.group(1)
+        # ============================================================
+        #  COOKIE FILE PATH - Render Secret File se
+        # ============================================================
+        cookie_file_path = os.environ.get('YOUTUBE_COOKIE_FILE_PATH', '/etc/secrets/cookies.txt')
+        
+        # Check if cookie file exists
+        if not os.path.exists(cookie_file_path):
+            # Fallback: try local file
+            cookie_file_path = 'cookies.txt'
+            if not os.path.exists(cookie_file_path):
+                return jsonify({'error': 'Cookie file not found! Please upload cookies.txt as Secret File on Render.'}), 500
+        
+        # Unique ID for each download
+        download_id = str(uuid.uuid4())[:8]
+        output_path = os.path.join(DOWNLOAD_FOLDER, download_id)
+        os.makedirs(output_path, exist_ok=True)
+        
+        # Quality mapping
+        quality_map = {
+            '1080': 'bestvideo[height<=1080]+bestaudio/best[height<=1080]',
+            '720': 'bestvideo[height<=720]+bestaudio/best[height<=720]',
+            '480': 'bestvideo[height<=480]+bestaudio/best[height<=480]',
+            '360': 'bestvideo[height<=360]+bestaudio/best[height<=360]',
+            'audio': 'bestaudio/best'
+        }
+        
+        format_spec = quality_map.get(quality, 'bestvideo[height<=720]+bestaudio/best[height<=720]')
         
         # ============================================================
-        #  MULTIPLE FREE APIs (Fallback system)
+        #  yt-dlp OPTIONS with COOKIES + ANTI-BOT SETTINGS
         # ============================================================
-        
-        apis = [
-            # API 1: Vevioz (Best for video)
-            {
-                'url': f"https://api.vevioz.com/api/button/mp3/{video_id}",
-                'method': 'GET',
-                'parse': lambda data: {
-                    'url': data.get('url'),
-                    'title': data.get('title', 'Video')
-                }
-            },
-            # API 2: YT API (Fallback)
-            {
-                'url': f"https://yt-api.com/api/button/mp3/{video_id}",
-                'method': 'GET',
-                'parse': lambda data: {
-                    'url': data.get('url'),
-                    'title': data.get('title', 'Video')
-                }
-            },
-            # API 3: Another free API
-        {
-                'url': f"https://api.yt5s.com/api/convert?url=https://www.youtube.com/watch?v={video_id}&type=mp4&quality={quality}",
-                'method': 'GET',
-                'parse': lambda data: {
-                    'url': data.get('url') or data.get('download_url'),
-                    'title': data.get('title', 'Video')
+        if quality == 'audio':
+            ydl_opts = {
+                'format': 'bestaudio/best',
+                'outtmpl': os.path.join(output_path, '%(title)s.%(ext)s'),
+                'postprocessors': [{
+                    'key': 'FFmpegExtractAudio',
+                    'preferredcodec': 'mp3',
+                    'preferredquality': '192',
+                }],
+                'cookiefile': cookie_file_path,  # <--- CRUCIAL
+                'quiet': True,
+                'no_warnings': True,
+                'no_check_certificate': True,
+                'extractor_args': {
+                    'youtube': {
+                        'player_client': ['android'],  # Mobile client less strict
+                        'player_skip': ['webpage'],
+                    }
                 }
             }
-        ]
-        
-        for api in apis:
-            try:
-                response = requests.get(api['url'], timeout=30)
-                if response.status_code == 200:
-                    data = response.json()
-                    result = api['parse'](data)
-                    
-                    if result['url']:
-                        return jsonify({
-                            'success': True,
-                            'download_url': result['url'],
-                            'title': result['title'],
-                            'video_id': video_id
-                        })
-            except:
-                continue
-        
-        return jsonify({'error': 'All APIs failed. Please try again later or use ssyoutube.com'}), 500
-        
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-@app.route('/info', methods=['POST'])
-def get_info():
-    try:
-        url = request.form.get('url')
-        if not url:
-            return jsonify({'error': 'URL nahi daala!'}), 400
-        
-        video_id = re.search(r'(?:v=|youtu\.be/|shorts/|embed/)([a-zA-Z0-9_-]{11})', url)
-        if not video_id:
-            return jsonify({'error': 'Invalid URL'}), 400
-        
-        video_id = video_id.group(1)
-        
-        # YouTube oEmbed API (no auth required)
-        oembed_url = f"https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v={video_id}&format=json"
-        response = requests.get(oembed_url, timeout=10)
-        
-        if response.status_code == 200:
-            data = response.json()
-            return jsonify({
-                'title': data.get('title', 'Unknown'),
-                'thumbnail': f"https://img.youtube.com/vi/{video_id}/hqdefault.jpg",
-                'uploader': data.get('author_name', 'Unknown'),
-            })
         else:
-            # Fallback: Direct thumbnail
-            return jsonify({
-                'title': 'Video',
-                'thumbnail': f"https://img.youtube.com/vi/{video_id}/hqdefault.jpg",
-                'uploader': 'Unknown'
-            })
+            ydl_opts = {
+                'format': format_spec,
+                'outtmpl': os.path.join(output_path, '%(title)s.%(ext)s'),
+                'merge_output_format': 'mp4',
+                'cookiefile': cookie_file_path,  # <--- CRUCIAL
+                'quiet': True,
+                'no_warnings': True,
+                'no_check_certificate': True,
+                'extract_flat': False,
+                'ignoreerrors': True,
+                'extractor_args': {
+                    'youtube': {
+                        'player_client': ['android'],  # Mobile client less strict
+                        'player_skip': ['webpage'],
+                    }
+                }
+            }
         
+        # Download with yt-dlp
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=True)
+            title = info.get('title', 'video').replace('/', '_').replace('\\', '_')
+            
+            # Find downloaded file
+            files = os.listdir(output_path)
+            if not files:
+                return jsonify({'error': 'File download nahi hui'}), 500
+            
+            filename = files[0]
+            file_path = os.path.join(output_path, filename)
+            
+            # Determine mimetype
+            mimetype = 'audio/mpeg' if quality == 'audio' else 'video/mp4'
+            ext = 'mp3' if quality == 'audio' else 'mp4'
+            
+            # Send file
+            return send_file(
+                file_path,
+                as_attachment=True,
+                download_name=f"{title}.{ext}",
+                mimetype=mimetype
+            )
+            
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        error_msg = str(e)
+        if 'Sign in to confirm' in error_msg or 'bot' in error_msg.lower():
+            error_msg = 'YouTube bot detection! Cookies might be expired. Please refresh cookies.txt and redeploy.'
+        elif 'HTTP Error 403' in error_msg:
+            error_msg = 'YouTube ne block kar diya! Cookies refresh karein.'
+        return jsonify({'error': error_msg}), 500
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
