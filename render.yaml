@@ -2,8 +2,17 @@ services:
   - type: web
     name: youtube-downloader
     env: python
-    buildCommand: pip install -r requirements.txt
-    startCommand: gunicorn app:app
+    buildCommand: |
+      pip install --upgrade pip
+      pip install -r requirements.txt
+      pip install --upgrade yt-dlp
+    startCommand: gunicorn app:app --timeout 300 --workers 2
     envVars:
       - key: PYTHON_VERSION
         value: 3.11.5
+      - key: COOKIES_FILE_PATH
+        value: /etc/secrets/cookies.txt
+      - key: YOUTUBE_COOKIES_JSON
+        sync: false
+    healthCheckPath: /health
+    autoDeploy: true
