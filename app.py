@@ -3,7 +3,14 @@ import yt_dlp
 import os
 import uuid
 import re
+import logging
 from datetime import datetime
+
+# ================================================================
+# LOGGING SETUP - To see exact errors
+# ================================================================
+logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 
@@ -13,7 +20,7 @@ if not os.path.exists(DOWNLOAD_FOLDER):
     os.makedirs(DOWNLOAD_FOLDER)
 
 # ================================================================
-# HTML TEMPLATE (Same as before - simplified)
+# HTML TEMPLATE (Frontend)
 # ================================================================
 HTML_TEMPLATE = '''
 <!DOCTYPE html>
@@ -327,7 +334,7 @@ HTML_TEMPLATE = '''
             downloadBtn.textContent = '⏳ Processing...';
             videoInfoDiv.style.display = 'none';
             hideProgress();
-            setStatus('🔄 Fetching video details... Please wait.', 'loading');
+            setStatus('🔄 Downloading... Please wait.', 'loading');
             setProgress(20);
 
             try {
@@ -341,8 +348,12 @@ HTML_TEMPLATE = '''
                 });
 
                 if (!response.ok) {
-                    const errorData = await response.json();
-                    throw new Error(errorData.error || 'Download failed');
+                    let errorMsg = 'Download failed';
+                    try {
+                        const errorData = await response.json();
+                        errorMsg = errorData.error || errorMsg;
+                    } catch (e) {}
+                    throw new Error(errorMsg);
                 }
 
                 setProgress(80);
@@ -399,6 +410,11 @@ HTML_TEMPLATE = '''
 '''
 
 # ================================================================
+# FIX: Regular expression with raw string
+# ================================================================
+URL_REGEX = re.compile(r'(?:youtube\.com/watch\?v=|youtu\.be/|youtube\.com/shorts/|youtube\.com/embed/)([a-zA-Z0-9_-]{11})')
+
+# ================================================================
 # FLASK ROUTES - yt-dlp + Cookies
 # ================================================================
 
@@ -412,29 +428,38 @@ def download():
         url = request.form.get('url')
         quality = request.form.get('quality', '720')
         
+        logger.info(f"Download request received: URL={url}, Quality={quality}")
+        
         if not url:
             return jsonify({'error': 'URL nahi daala!'}), 400
         
         # Validate URL
-        if not re.search(r'(?:youtube\.com/watch\?v=|youtu\.be/|youtube\.com/shorts/|youtube\.com/embed/)([a-zA-Z0-9_-]{11})', url):
+        match = URL_REGEX.search(url)
+        if not match:
+            logger.error(f"Invalid URL: {url}")
             return jsonify({'error': 'Invalid YouTube URL!'}), 400
         
+        video_id = match.group(1)
+        logger.info(f"Video ID extracted: {video_id}")
+        
         # ============================================================
-        #  COOKIE FILE PATH - Render Secret File se
+        #  COOKIE FILE PATH - Render Secret File
         # ============================================================
         cookie_file_path = os.environ.get('YOUTUBE_COOKIE_FILE_PATH', '/etc/secrets/cookies.txt')
+        logger.info(f"Looking for cookie file at: {cookie_file_path}")
         
         # Check if cookie file exists
         if not os.path.exists(cookie_file_path):
-            # Fallback: try local file
-            cookie_file_path = 'cookies.txt'
-            if not os.path.exists(cookie_file_path):
-                return jsonify({'error': 'Cookie file not found! Please upload cookies.txt as Secret File on Render.'}), 500
+            logger.error(f"Cookie file not found at: {cookie_file_path}")
+            return jsonify({'error': f'Cookie file not found at {cookie_file_path}! Please upload cookies.txt as Secret File on Render.'}), 500
+        
+        logger.info(f"Cookie file found at: {cookie_file_path}")
         
         # Unique ID for each download
         download_id = str(uuid.uuid4())[:8]
         output_path = os.path.join(DOWNLOAD_FOLDER, download_id)
         os.makedirs(output_path, exist_ok=True)
+        logger.info(f"Output path created: {output_path}")
         
         # Quality mapping
         quality_map = {
@@ -446,6 +471,7 @@ def download():
         }
         
         format_spec = quality_map.get(quality, 'bestvideo[height<=720]+bestaudio/best[height<=720]')
+        logger.info(f"Format spec: {format_spec}")
         
         # ============================================================
         #  yt-dlp OPTIONS with COOKIES + ANTI-BOT SETTINGS
@@ -459,13 +485,13 @@ def download():
                     'preferredcodec': 'mp3',
                     'preferredquality': '192',
                 }],
-                'cookiefile': cookie_file_path,  # <--- CRUCIAL
-                'quiet': True,
-                'no_warnings': True,
+                'cookiefile': cookie_file_path,
+                'quiet': False,  # Set to False for debugging
+                'no_warnings': False,
                 'no_check_certificate': True,
                 'extractor_args': {
                     'youtube': {
-                        'player_client': ['android'],  # Mobile client less strict
+                        'player_client': ['android'],
                         'player_skip': ['webpage'],
                     }
                 }
@@ -475,32 +501,36 @@ def download():
                 'format': format_spec,
                 'outtmpl': os.path.join(output_path, '%(title)s.%(ext)s'),
                 'merge_output_format': 'mp4',
-                'cookiefile': cookie_file_path,  # <--- CRUCIAL
-                'quiet': True,
-                'no_warnings': True,
+                'cookiefile': cookie_file_path,
+                'quiet': False,  # Set to False for debugging
+                'no_warnings': False,
                 'no_check_certificate': True,
                 'extract_flat': False,
                 'ignoreerrors': True,
                 'extractor_args': {
                     'youtube': {
-                        'player_client': ['android'],  # Mobile client less strict
+                        'player_client': ['android'],
                         'player_skip': ['webpage'],
                     }
                 }
             }
         
         # Download with yt-dlp
+        logger.info("Starting yt-dlp download...")
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=True)
             title = info.get('title', 'video').replace('/', '_').replace('\\', '_')
+            logger.info(f"Downloaded video: {title}")
             
             # Find downloaded file
             files = os.listdir(output_path)
             if not files:
+                logger.error("No files found in output directory")
                 return jsonify({'error': 'File download nahi hui'}), 500
             
             filename = files[0]
             file_path = os.path.join(output_path, filename)
+            logger.info(f"Sending file: {file_path}")
             
             # Determine mimetype
             mimetype = 'audio/mpeg' if quality == 'audio' else 'video/mp4'
@@ -515,6 +545,7 @@ def download():
             )
             
     except Exception as e:
+        logger.error(f"Download error: {str(e)}", exc_info=True)
         error_msg = str(e)
         if 'Sign in to confirm' in error_msg or 'bot' in error_msg.lower():
             error_msg = 'YouTube bot detection! Cookies might be expired. Please refresh cookies.txt and redeploy.'
@@ -523,5 +554,6 @@ def download():
         return jsonify({'error': error_msg}), 500
 
 if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 5000))
+    port = int(os.environ.get('PORT', 10000))
     app.run(host='0.0.0.0', port=port, debug=False)
+    
