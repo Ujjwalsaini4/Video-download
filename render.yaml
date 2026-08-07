@@ -8,3 +8,5 @@ services:
     envVars:
       - key: PYTHON_VERSION
         value: 3.10.0
+      - key: YOUTUBE_COOKIE_FILE_PATH
+        value: /etc/secrets/cookies.txt
