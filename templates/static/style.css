@@ -1,0 +1,222 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    min-height: 100vh;
+    background: linear-gradient(135deg, #0f0c29, #302b63, #24243e);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+}
+
+.container {
+    width: 100%;
+    max-width: 640px;
+}
+
+.glass-card {
+    background: rgba(255, 255, 255, 0.08);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border-radius: 28px;
+    padding: 36px 28px;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    box-shadow: 0 25px 50px -8px rgba(0, 0, 0, 0.5);
+}
+
+.title {
+    font-size: 2rem;
+    font-weight: 700;
+    color: #fff;
+    margin-bottom: 4px;
+}
+
+.subtitle {
+    color: rgba(255, 255, 255, 0.6);
+    font-size: 0.95rem;
+    margin-bottom: 24px;
+}
+
+.input-group {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.input-group input {
+    flex: 1;
+    padding: 14px 18px;
+    border-radius: 40px;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    background: rgba(255, 255, 255, 0.06);
+    color: #fff;
+    font-size: 1rem;
+    outline: none;
+    transition: 0.3s;
+    min-width: 200px;
+}
+
+.input-group input:focus {
+    border-color: #ff6b6b;
+    background: rgba(255, 255, 255, 0.1);
+}
+
+.input-group input::placeholder {
+    color: rgba(255, 255, 255, 0.35);
+}
+
+.input-group button {
+    padding: 14px 28px;
+    border-radius: 40px;
+    border: none;
+    background: linear-gradient(135deg, #ff6b6b, #ee5a24);
+    color: #fff;
+    font-weight: 600;
+    font-size: 1rem;
+    cursor: pointer;
+    transition: 0.3s;
+    white-space: nowrap;
+}
+
+.input-group button:hover {
+    transform: scale(1.03);
+    box-shadow: 0 8px 20px rgba(255, 107, 107, 0.3);
+}
+
+#loader {
+    margin-top: 20px;
+    color: rgba(255, 255, 255, 0.7);
+    font-size: 1rem;
+    animation: pulse 1.2s infinite;
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
+}
+
+.video-preview {
+    display: flex;
+    gap: 18px;
+    margin-top: 24px;
+    padding: 18px;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 16px;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.video-preview img {
+    width: 120px;
+    height: 68px;
+    object-fit: cover;
+    border-radius: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.video-preview h2 {
+    color: #fff;
+    font-size: 1.1rem;
+    margin-bottom: 2px;
+    word-break: break-word;
+}
+
+.video-preview p {
+    color: rgba(255, 255, 255, 0.6);
+    font-size: 0.85rem;
+}
+
+.format-section {
+    margin-top: 24px;
+}
+
+.format-section h3 {
+    color: #fff;
+    font-size: 1rem;
+    margin-bottom: 10px;
+    font-weight: 500;
+}
+
+.format-section select {
+    width: 100%;
+    padding: 12px 16px;
+    border-radius: 40px;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    color: #fff;
+    font-size: 0.95rem;
+    outline: none;
+    margin-bottom: 12px;
+}
+
+.format-section select option {
+    background: #1a1a2e;
+    color: #fff;
+}
+
+.download-btn {
+    width: 100%;
+    padding: 14px;
+    border-radius: 40px;
+    border: none;
+    background: linear-gradient(135deg, #00b894, #00a86b);
+    color: #fff;
+    font-weight: 600;
+    font-size: 1rem;
+    cursor: pointer;
+    transition: 0.3s;
+    margin-top: 6px;
+}
+
+.download-btn:hover {
+    transform: scale(1.02);
+    box-shadow: 0 8px 20px rgba(0, 184, 148, 0.3);
+}
+
+.audio-btn {
+    background: linear-gradient(135deg, #6c5ce7, #a29bfe);
+}
+
+.audio-btn:hover {
+    box-shadow: 0 8px 20px rgba(108, 92, 231, 0.3);
+}
+
+#errorMsg {
+    color: #ff6b6b;
+    margin-top: 16px;
+}
+
+#progressBar {
+    margin-top: 20px;
+}
+
+#progressFill {
+    height: 6px;
+    background: linear-gradient(90deg, #ff6b6b, #ffd93d);
+    width: 0%;
+    border-radius: 8px;
+    transition: width 0.3s;
+}
+
+@media (max-width: 480px) {
+    .glass-card {
+        padding: 24px 16px;
+    }
+    .title {
+        font-size: 1.5rem;
+    }
+    .video-preview {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+    .video-preview img {
+        width: 100%;
+        height: auto;
+        aspect-ratio: 16/9;
+    }
+}
